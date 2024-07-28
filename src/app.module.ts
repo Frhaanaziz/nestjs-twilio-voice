@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { validate } from './env.validation';
+import { SupabaseModule } from './supabase/supabase.module';
 
 @Module({
   imports: [
@@ -9,6 +10,7 @@ import { validate } from './env.validation';
       cache: true,
       validate,
     }),
+    SupabaseModule,
   ],
   controllers: [],
   providers: [],

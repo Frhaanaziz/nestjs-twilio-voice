@@ -22,6 +22,15 @@ class EnvironmentVariables {
   @Min(0)
   @Max(65535)
   PORT: number;
+
+  @IsString()
+  SUPABASE_URL: string;
+
+  @IsString()
+  SUPABASE_KEY: string;
+
+  @IsString()
+  SUPABASE_SERVICE_KEY: string;
 }
 
 export function validate(config: Record<string, unknown>) {
