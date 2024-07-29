@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { validate } from './env.validation';
 import { SupabaseModule } from './supabase/supabase.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { TwilioModule } from './twilio/twilio.module';
 
 @Module({
   imports: [
@@ -11,6 +13,8 @@ import { SupabaseModule } from './supabase/supabase.module';
       validate,
     }),
     SupabaseModule,
+    WebhooksModule,
+    TwilioModule,
   ],
   controllers: [],
   providers: [],
