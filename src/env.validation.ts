@@ -6,7 +6,6 @@ import {
   Max,
   Min,
   validateSync,
-  IsNotEmpty,
 } from 'class-validator';
 
 enum Environment {
@@ -22,6 +21,9 @@ class EnvironmentVariables {
   @Min(0)
   @Max(65535)
   PORT: number;
+
+  @IsString()
+  BASE_URL: string;
 
   @IsString()
   SUPABASE_URL: string;
