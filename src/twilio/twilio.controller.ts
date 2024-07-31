@@ -4,7 +4,6 @@ import { GenerateAccessTokenDto } from './dto/generate-access-token.dto';
 
 @Controller('twilio')
 export class TwilioController {
-  private readonly logger = new Logger(TwilioController.name);
   constructor(private readonly twilioService: TwilioService) {}
 
   @Post('generate-access-token')
