@@ -1,25 +1,31 @@
-import { IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
 export class VoiceWebhookDto {
   @IsString()
+  @IsOptional()
   AccountSid: string;
 
   @IsString()
+  @IsOptional()
   ApplicationSid: string;
 
   @IsString()
+  @IsOptional()
   CallSid: string;
 
   @IsString()
+  @IsOptional()
   CallStatus: string;
 
   @IsString()
   Caller: string;
 
   @IsString()
+  @IsOptional()
   Direction: string;
 
   @IsString()
+  @IsOptional()
   From: string;
 
   @IsString()
