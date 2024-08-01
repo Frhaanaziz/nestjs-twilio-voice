@@ -1,12 +1,15 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as twilio from 'twilio';
-import { VoiceWebhookDto } from './dto/voice-webhook.dto';
-import { TwilioAgent, TwilioSetting } from './twilio.interface';
-import { UpdateCallStatusDto } from './dto/update-call-status.dto';
+import { TwilioVoiceWebhookDto } from './dto/twilio-voice-webhook.dto';
+import { TwilioSetting } from './twilio.interface';
+import { UpdateTwilioCallStatusDto } from './dto/update-twilio-call-status.dto';
 import { Database } from 'src/supabase/supabase.types';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService } from 'src/supabase/supabase.service';
+import { CallLogsService } from 'src/call-logs/call-logs.service';
+import { TwilioIncomingCallDto } from './dto/twilio-incoming-call.dto';
+import { UpdateTwilioRecordingInfoDto } from './dto/update-twilio-recording-info.dto';
 
 @Injectable()
 export class TwilioService {
@@ -14,33 +17,15 @@ export class TwilioService {
   private readonly supabase: SupabaseClient<Database>;
 
   constructor(
-    private configService: ConfigService,
-    private supabaseService: SupabaseService,
+    private readonly configService: ConfigService,
+    private readonly supabaseService: SupabaseService,
+    private readonly callLogsService: CallLogsService,
   ) {
     this.supabase = this.supabaseService.getClient();
   }
 
-  async getClient({ twilioNumber }: { twilioNumber: string }) {
-    const { data: user, error: userError } = await this.supabase
-      .from('Users')
-      .select(
-        'id, twilioSetting: Twilio_Settings(*), twilioAgent: Twilio_Agents!inner(*)',
-      )
-      .eq('twilioAgent.twilio_number', twilioNumber)
-      .single();
-    if (userError) {
-      this.logger.error(userError.message, 'getClient');
-      throw new BadRequestException(userError.message);
-    }
-
-    if (!user.twilioSetting?.account_sid) {
-      this.logger.error('Account SID is not set', 'getClient');
-      throw new BadRequestException('Account SID is not set');
-    }
-    if (!user.twilioSetting?.auth_token) {
-      this.logger.error('Auth Token is not set', 'getClient');
-      throw new BadRequestException('Auth Token is not set');
-    }
+  async getClient({ identity }: { identity: string }) {
+    const user = await this.getTwilioDataFromIdentity(identity);
 
     return new twilio.Twilio(
       user.twilioSetting.account_sid,
@@ -49,45 +34,121 @@ export class TwilioService {
     );
   }
 
-  async handleVoiceWebhook({ Caller, To, CallSid }: VoiceWebhookDto) {
+  async handleVoiceWebhook({
+    Caller,
+    To,
+    CallSid,
+    CallStatus,
+    From,
+  }: TwilioVoiceWebhookDto) {
     const { twilioAgent, twilioSetting } =
       await this.getTwilioDataFromIdentity(Caller);
 
-    const fromNumber = this.getCallerNumber({ twilioAgent });
-    const resp = await this.generateTwilioDialResponse({
-      fromNumber,
+    if (!twilioAgent?.twilio_number) {
+      this.logger.error('getCallerNumber: Twilio Number is not set');
+      throw new BadRequestException('Twilio Number is not set');
+    }
+
+    const resp = this.generateTwilioDialResponse({
+      fromNumber: twilioAgent.twilio_number,
       toNumber: To,
       twilioSetting: twilioSetting,
     });
 
-    await this.createCallLog({ caller: Caller, callSid: CallSid });
+    await this.callLogsService.create({
+      call_sid: CallSid,
+      type: this.getDirection({ caller: Caller }),
+      caller: Caller,
+      status: CallStatus,
+      to: To,
+      from: From,
+    });
 
     return resp;
   }
 
+  async updateCallStatusInfo(data: UpdateTwilioCallStatusDto) {
+    try {
+      const twilioClient = await this.getClient({
+        identity: data.Caller.startsWith('client:') ? data.Caller : data.To,
+      });
+
+      if (data.CallStatus !== 'completed') {
+        await twilioClient
+          .calls(data.ParentCallSid)
+          .userDefinedMessages.create({
+            content: JSON.stringify(data),
+          });
+      }
+
+      const callDetails = await this.getCallInfo({
+        callSid: data.ParentCallSid,
+        client: twilioClient,
+      });
+      await this.callLogsService.update({
+        match: { call_sid: data.ParentCallSid },
+        data: {
+          status: data.CallStatus,
+          duration: data.CallDuration,
+          to: data.To,
+          from: data.From,
+          price: callDetails.price,
+          price_unit: callDetails.priceUnit,
+          start_time: callDetails.startTime?.toISOString(),
+          end_time: callDetails.startTime?.toISOString(),
+        },
+      });
+    } catch (error) {
+      this.logger.error(`updateCallStatusInfo: ${error.message}`);
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  async updateRecordingInfo(data: UpdateTwilioRecordingInfoDto) {
+    try {
+      await this.callLogsService.update({
+        match: { call_sid: data.CallSid },
+        data: { recording_url: data.RecordingUrl },
+      });
+    } catch (error) {
+      this.logger.error(`updateRecordingInfo: ${error.message}`);
+      throw new BadRequestException(error.message);
+    }
+  }
+
   async generateVoiceAccessToken({
-    userId,
+    user_id,
     ttl = 60 * 60,
   }: {
-    userId: string;
+    user_id: string;
     ttl?: number;
   }) {
-    const { twilioSetting } = await this.getTwilioDataFromIdentity(userId);
+    const { twilioSetting } = await this.getTwilioDataFromIdentity(
+      `client:${user_id}`,
+    );
 
-    if (!twilioSetting.account_sid)
+    if (!twilioSetting.account_sid) {
+      this.logger.error('generateVoiceAccessToken: Account SID is not set');
       throw new BadRequestException('Account SID is not set');
-    if (!twilioSetting.api_key)
+    }
+    if (!twilioSetting.api_key) {
+      this.logger.error('generateVoiceAccessToken: API Key is not set');
       throw new BadRequestException('API Key is not set');
-    if (!twilioSetting.api_secret)
+    }
+    if (!twilioSetting.api_secret) {
+      this.logger.error('generateVoiceAccessToken: API Secret is not set');
       throw new BadRequestException('API Secret is not set');
-    if (!twilioSetting.twiml_sid)
+    }
+    if (!twilioSetting.twiml_sid) {
+      this.logger.error('generateVoiceAccessToken: Twiml SID is not set');
       throw new BadRequestException('Twiml SID is not set');
+    }
 
     const token = new twilio.jwt.AccessToken(
       twilioSetting.account_sid,
       twilioSetting.api_key,
       twilioSetting.api_secret,
-      { identity: userId, ttl },
+      { identity: user_id, ttl },
     );
 
     const voiceGrant = new twilio.jwt.AccessToken.VoiceGrant({
@@ -160,120 +221,34 @@ export class TwilioService {
   }
 
   async getTwilioDataFromIdentity(identity: string) {
-    const safeIdentity = identity.replace('client:', '').trim();
+    if (identity.startsWith('client:')) {
+      const { data: user, error: userError } = await this.supabase
+        .from('Users')
+        .select(
+          'id, twilioSetting: Twilio_Settings(*), twilioAgent: Twilio_Agents(*)',
+        )
+        .eq('id', identity.replace('client:', ''))
+        .single();
+      if (userError) {
+        this.logger.error(`getTwilioDataFromIdentity: ${userError.message}`);
+        throw new BadRequestException(userError.message);
+      }
 
-    const { data: user, error: userError } = await this.supabase
-      .from('Users')
-      .select(
-        'id, twilioSetting: Twilio_Settings(*), twilioAgent: Twilio_Agents(*)',
-      )
-      .eq('id', safeIdentity)
-      .single();
-    if (userError) {
-      this.logger.error(userError.message, 'getTwilioDataFromIdentity');
-      throw new BadRequestException(userError.message);
-    }
+      return user;
+    } else {
+      const { data: user, error: userError } = await this.supabase
+        .from('Users')
+        .select(
+          'id, twilioSetting: Twilio_Settings(*), twilioAgent: Twilio_Agents!inner(*)',
+        )
+        .eq('twilioAgent.twilio_number', identity)
+        .single();
+      if (userError) {
+        this.logger.error(`getTwilioDataFromIdentity: ${userError.message}`);
+        throw new BadRequestException(userError.message);
+      }
 
-    return user;
-  }
-
-  async updateCallStatusInfo(data: UpdateCallStatusDto) {
-    try {
-      await this.updateCallLog({
-        caller: data.Caller,
-        callSid: data.ParentCallSid,
-        status: data.CallStatus,
-      });
-
-      // const callInfo = {
-      //   ParentCallSid: data.ParentCallSid,
-      //   CallSid: data.CallSid,
-      //   CallStatus: data.CallStatus,
-      //   CallDuration: data.CallDuration,
-      //   From: data.From,
-      //   To: data.To,
-      // };
-
-      const twilioClient = await this.getClient({ twilioNumber: data.Caller });
-      await twilioClient.calls(data.ParentCallSid).userDefinedMessages.create({
-        // content: JSON.stringify(callInfo),
-        content: JSON.stringify(data),
-      });
-    } catch (error) {
-      throw new BadRequestException(
-        'Failed to update Twilio call status: ' + error.message,
-      );
-    }
-  }
-
-  async createCallLog({
-    caller,
-    callSid,
-  }: {
-    caller: string;
-    callSid: string;
-  }) {
-    const twilio = await this.getClient({ twilioNumber: caller });
-    const callDetails = await this.getCallInfo({ callSid, client: twilio });
-
-    const { error: insertError } = await this.supabase
-      .from('Call_Logs')
-      .insert({
-        call_sid: callSid,
-        type: this.getDirection({ caller }),
-        caller,
-        status: callDetails.status,
-        duration: callDetails.duration,
-        to: callDetails.to,
-        from: callDetails.from,
-        price: callDetails.price,
-        price_unit: callDetails.priceUnit,
-        start_time: callDetails.startTime?.toISOString(),
-        end_time: callDetails.startTime?.toISOString(),
-      });
-    if (insertError) {
-      console.error('Failed to create call log:', insertError);
-    }
-  }
-
-  async updateCallLog({
-    caller,
-    callSid,
-    status,
-  }: {
-    caller: string;
-    callSid: string;
-    status?: string;
-  }) {
-    const twilio = await this.getClient({ twilioNumber: caller });
-
-    // const { data, error } = await supabase
-    //   .from('Call_Logs')
-    //   .select()
-    //   .eq('call_sid', callSid)
-    //   .single();
-    // if (error || !data) return;
-
-    const callDetails = await this.getCallInfo({ callSid, client: twilio });
-
-    const updatedStatus = status || callDetails.status;
-
-    const { error: updateError } = await this.supabase
-      .from('Call_Logs')
-      .update({
-        // status: this.getCallStatus(updatedStatus),
-        status: updatedStatus,
-        duration: callDetails.duration,
-        to: callDetails.to,
-        from: callDetails.from,
-        price: callDetails.price,
-        price_unit: callDetails.priceUnit,
-        start_time: callDetails.startTime?.toISOString(),
-        end_time: callDetails.startTime?.toISOString(),
-      })
-      .eq('call_sid', callSid);
-    if (updateError) {
-      console.error('Failed to update call log:', updateError);
+      return user;
     }
   }
 
@@ -282,40 +257,53 @@ export class TwilioService {
   //
 
   async processIncomingCall({
-    fromNumber,
-    toNumber,
-  }: {
-    fromNumber: string;
-    toNumber: string;
-  }) {
-    const user = await this.getTwilioNumberOwners(toNumber);
+    From,
+    To,
+    CallSid,
+    CallStatus,
+    Called,
+    Caller,
+  }: TwilioIncomingCallDto) {
+    const user = await this.getTwilioNumberOwners(To);
 
-    // if (!attender) {
-    //   const resp = new VoiceResponse();
-    //   resp.say(
-    //     'Agent is unavailable to take the call, please call after some time.',
-    //   );
-    //   return resp.toString();
-    // }
-
-    if (user.twilioAgent.call_receiving_device === 'Phone' && !!user.phone) {
-      return this.generateTwilioDialResponse({
-        fromNumber,
-        toNumber: user.phone,
-        twilioSetting: user.twilioSetting,
-      });
+    let resp: string;
+    if (user.twilioAgent.call_receiving_device === 'Phone') {
+      if (!user.phone) {
+        const response = new twilio.twiml.VoiceResponse();
+        response.say(
+          'Agent is unavailable to take the call, please call after some time.',
+        );
+        resp = response.toString();
+      } else {
+        resp = this.generateTwilioDialResponse({
+          fromNumber: From,
+          toNumber: user.phone,
+          twilioSetting: user.twilioSetting,
+        });
+      }
     } else {
-      return this.generateTwilioClientResponse({
+      resp = this.generateTwilioClientResponse({
         identity: user.id,
         twilioSetting: user.twilioSetting,
       });
     }
+
+    await this.callLogsService.create({
+      call_sid: CallSid,
+      type: this.getDirection({ caller: Caller }),
+      caller: Caller,
+      receiver: Called,
+      status: CallStatus,
+      to: To,
+      from: From,
+    });
+
+    return resp;
   }
 
   private async getTwilioNumberOwners(phoneNumber: string) {
     const cleanedPhoneNumber = phoneNumber.replace(/[^\d+]/g, '');
 
-    // Query Twilio Agents
     const { data: users, error: usersError } = await this.supabase
       .from('Users')
       .select(
@@ -327,7 +315,10 @@ export class TwilioService {
       )
       .eq('twilioAgent.twilio_number', cleanedPhoneNumber)
       .single();
-    if (usersError) throw new BadRequestException(usersError.message);
+    if (usersError) {
+      this.logger.error(`getTwilioNumberOwners: ${usersError.message}`);
+      throw new BadRequestException(usersError.message);
+    }
 
     return users;
   }
@@ -335,15 +326,6 @@ export class TwilioService {
   //
   // UTILS
   //
-
-  // getCallStatus(twilioStatus?: string | null) {
-  //   if (!twilioStatus) return '';
-
-  //   return twilioStatus
-  //     .split('-')
-  //     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-  //     .join(' ');
-  // }
 
   getDirection({ caller }: { caller: string }) {
     if (caller.toLowerCase().startsWith('client:')) {
@@ -373,26 +355,12 @@ export class TwilioService {
       body,
     );
     if (!isValid) {
-      this.logger.error('Invalid Twilio Request', 'validateTwilioRequest');
+      this.logger.error('validateTwilioRequest: Invalid Twilio Request');
       throw new BadRequestException('Invalid Twilio Request');
     }
   }
 
-  getCallerNumber({ twilioAgent }: { twilioAgent: TwilioAgent }) {
-    if (!twilioAgent?.twilio_number) {
-      this.logger.error('Twilio Number is not set', 'getCallerNumber');
-      throw new BadRequestException('Twilio Number is not set');
-    }
-
-    return twilioAgent.twilio_number;
-  }
-
-  async getPhoneNumbers(client: twilio.Twilio) {
-    const numbers = await client.incomingPhoneNumbers.list();
-    return numbers.map((n) => n.phoneNumber);
-  }
-
-  getRecordingStatusCallbackUrl(): string {
+  getRecordingStatusCallbackUrl() {
     return (
       this.configService.get<string>('BASE_URL') +
       '/webhooks/twilio/update-recording-info'
