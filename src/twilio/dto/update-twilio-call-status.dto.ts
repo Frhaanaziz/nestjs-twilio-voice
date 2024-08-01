@@ -36,7 +36,7 @@ import { IsString, IsOptional } from 'class-validator';
 //   FromState: 'AL',
 // };
 
-export class UpdateCallStatusDto {
+export class UpdateTwilioCallStatusDto {
   @IsOptional()
   @IsString()
   Called: string;

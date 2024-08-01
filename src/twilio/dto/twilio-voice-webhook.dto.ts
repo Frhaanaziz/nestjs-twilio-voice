@@ -1,6 +1,6 @@
 import { IsOptional, IsString } from 'class-validator';
 
-export class VoiceWebhookDto {
+export class TwilioVoiceWebhookDto {
   @IsString()
   @IsOptional()
   AccountSid: string;
