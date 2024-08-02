@@ -5,6 +5,7 @@ import { SupabaseModule } from './supabase/supabase.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { TwilioModule } from './twilio/twilio.module';
 import { CallLogsModule } from './call-logs/call-logs.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { CallLogsModule } from './call-logs/call-logs.module';
     WebhooksModule,
     TwilioModule,
     CallLogsModule,
+    UsersModule,
   ],
   controllers: [],
   providers: [],
