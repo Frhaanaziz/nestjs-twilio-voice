@@ -5,117 +5,40 @@ import { TwilioVoiceWebhookDto } from './dto/twilio-voice-webhook.dto';
 import { TwilioSetting } from './twilio.interface';
 import { UpdateTwilioCallStatusDto } from './dto/update-twilio-call-status.dto';
 import { Database } from 'src/supabase/supabase.types';
-import { SupabaseClient } from '@supabase/supabase-js';
-import { SupabaseService } from 'src/supabase/supabase.service';
 import { CallLogsService } from 'src/call-logs/call-logs.service';
 import { TwilioIncomingCallDto } from './dto/twilio-incoming-call.dto';
 import { UpdateTwilioRecordingInfoDto } from './dto/update-twilio-recording-info.dto';
+import { UsersService } from 'src/users/users.service';
+import VoiceResponse from 'twilio/lib/twiml/VoiceResponse';
 
 @Injectable()
 export class TwilioService {
   private readonly logger = new Logger(TwilioService.name);
-  private readonly supabase: SupabaseClient<Database>;
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly supabaseService: SupabaseService,
     private readonly callLogsService: CallLogsService,
-  ) {
-    this.supabase = this.supabaseService.getClient();
-  }
+    private readonly usersService: UsersService,
+  ) {}
 
-  async getClient({ identity }: { identity: string }) {
-    const user = await this.getTwilioDataFromIdentity(identity);
+  async getClient({ Caller, To }: { Caller: string; To: string }) {
+    const { twilioSetting } = await this.getTwilioData({ Caller, To });
 
     return new twilio.Twilio(
-      user.twilioSetting.account_sid,
-      user.twilioSetting.auth_token,
+      twilioSetting.account_sid,
+      twilioSetting.auth_token,
       { logLevel: 'debug' },
     );
   }
 
-  async handleVoiceWebhook({
-    Caller,
-    To,
-    CallSid,
-    CallStatus,
-    From,
-  }: TwilioVoiceWebhookDto) {
-    const { twilioAgent, twilioSetting } =
-      await this.getTwilioDataFromIdentity(Caller);
-
-    if (!twilioAgent?.twilio_number) {
-      this.logger.error('getCallerNumber: Twilio Number is not set');
-      throw new BadRequestException('Twilio Number is not set');
-    }
-
-    const resp = this.generateTwilioDialResponse({
-      fromNumber: twilioAgent.twilio_number,
-      toNumber: To,
-      twilioSetting: twilioSetting,
-    });
-
-    await this.callLogsService.create({
-      call_sid: CallSid,
-      type: this.getDirection({ caller: Caller }),
-      caller: Caller,
-      status: CallStatus,
-      to: To,
-      from: From,
-    });
-
-    return resp;
-  }
-
-  async updateCallStatusInfo(data: UpdateTwilioCallStatusDto) {
-    try {
-      const twilioClient = await this.getClient({
-        identity: data.Caller.startsWith('client:') ? data.Caller : data.To,
-      });
-
-      if (data.CallStatus !== 'completed') {
-        await twilioClient
-          .calls(data.ParentCallSid)
-          .userDefinedMessages.create({
-            content: JSON.stringify(data),
-          });
-      }
-
-      const callDetails = await this.getCallInfo({
-        callSid: data.ParentCallSid,
-        client: twilioClient,
-      });
-      await this.callLogsService.update({
-        match: { call_sid: data.ParentCallSid },
-        data: {
-          status: data.CallStatus,
-          duration: data.CallDuration,
-          to: data.To,
-          from: data.From,
-          price: callDetails.price,
-          price_unit: callDetails.priceUnit,
-          start_time: callDetails.startTime?.toISOString(),
-          end_time: callDetails.startTime?.toISOString(),
-        },
-      });
-    } catch (error) {
-      this.logger.error(`updateCallStatusInfo: ${error.message}`);
-      throw new BadRequestException(error.message);
-    }
-  }
-
-  async updateRecordingInfo(data: UpdateTwilioRecordingInfoDto) {
-    try {
-      await this.callLogsService.update({
-        match: { call_sid: data.CallSid },
-        data: { recording_url: data.RecordingUrl },
-      });
-    } catch (error) {
-      this.logger.error(`updateRecordingInfo: ${error.message}`);
-      throw new BadRequestException(error.message);
-    }
-  }
-
+  /**
+   * Generates a Twilio voice access token for a given user.
+   * @param {Object} options - The options for generating the access token.
+   * @param {string} options.user_id - The user ID for which the access token is generated.
+   * @param {number} [options.ttl=3600] - The time to live (in seconds) for the access token.
+   * @returns {string} The generated Twilio voice access token.
+   * @throws {BadRequestException} If any required Twilio settings are missing.
+   */
   async generateVoiceAccessToken({
     user_id,
     ttl = 60 * 60,
@@ -123,10 +46,13 @@ export class TwilioService {
     user_id: string;
     ttl?: number;
   }) {
-    const { twilioSetting } = await this.getTwilioDataFromIdentity(
-      `client:${user_id}`,
-    );
+    const { twilioSetting } =
+      await this.usersService.getTwilioDataFromUserId(user_id);
 
+    if (!twilioSetting) {
+      this.logger.error('generateVoiceAccessToken: Twilio Setting not found');
+      throw new BadRequestException('Twilio Setting not found');
+    }
     if (!twilioSetting.account_sid) {
       this.logger.error('generateVoiceAccessToken: Account SID is not set');
       throw new BadRequestException('Account SID is not set');
@@ -160,7 +86,186 @@ export class TwilioService {
     return token.toJwt();
   }
 
-  generateTwilioDialResponse({
+  /**
+   * Handles the Twilio voice webhook.
+   *
+   * @param {TwilioVoiceWebhookDto} options - The Twilio voice webhook data.
+   * @returns {Promise<any>} - The response generated for the webhook.
+   * @throws {BadRequestException} - If the Twilio Agent is not found, Twilio Number is not set, or Twilio Setting is not found.
+   */
+  async handleVoiceWebhook({
+    Caller,
+    To,
+    CallSid,
+    CallStatus,
+    From,
+  }: TwilioVoiceWebhookDto) {
+    const { twilioAgent, twilioSetting } = await this.getTwilioData({
+      Caller,
+      To,
+    });
+
+    if (!twilioAgent) {
+      this.logger.error('handleVoiceWebhook: Twilio Agent not found');
+      throw new BadRequestException('Twilio Agent not found');
+    }
+    if (!twilioAgent.twilio_number) {
+      this.logger.error('handleVoiceWebhook: Twilio Number is not set');
+      throw new BadRequestException('Twilio Number is not set');
+    }
+    if (!twilioSetting) {
+      this.logger.error('handleVoiceWebhook: Twilio Setting not found');
+      throw new BadRequestException('Twilio Setting not found');
+    }
+
+    const resp = this.generateDialResponse({
+      fromNumber: twilioAgent.twilio_number,
+      toNumber: To,
+      twilioSetting,
+    });
+
+    await this.callLogsService.create({
+      call_sid: CallSid,
+      type: this.getDirection({ caller: Caller }),
+      caller: Caller,
+      status: CallStatus,
+      to: To,
+      from: From,
+    });
+
+    return resp;
+  }
+
+  /**
+   * Processes an incoming call and determines the appropriate response based on the user's settings.
+   *
+   * @param {TwilioIncomingCallDto} incomingCall - The incoming call details.
+   * @returns {Promise<string>} - The TwiML response to be sent back to Twilio.
+   */
+  async processIncomingCallWebhook({
+    From,
+    To,
+    CallSid,
+    CallStatus,
+    Called,
+    Caller,
+  }: TwilioIncomingCallDto) {
+    // Get the user data based on the To number (Twilio number)
+    const user = await this.usersService.getTwilioDataFromTwilioNumber(To);
+
+    let resp: VoiceResponse;
+
+    // If the user is set to receive calls on their phone, dial the user's phone number
+    if (user.twilioAgent.call_receiving_device === 'Phone') {
+      // If the user's phone number is not set, inform the caller that the agent is unavailable
+      if (!user.phone) {
+        const response = new twilio.twiml.VoiceResponse();
+        response.say(
+          'Agent is unavailable to take the call, please call after some time.',
+        );
+        resp = response.toString();
+      } else {
+        resp = this.generateDialResponse({
+          fromNumber: From,
+          toNumber: user.phone,
+          twilioSetting: user.twilioSetting,
+        });
+      }
+    } else {
+      resp = this.generateClientResponse({
+        identity: user.id,
+        twilioSetting: user.twilioSetting,
+      });
+    }
+
+    // Create a new call log entry for the incoming call
+    await this.callLogsService.create({
+      call_sid: CallSid,
+      type: this.getDirection({ caller: Caller }),
+      caller: Caller,
+      receiver: Called,
+      status: CallStatus,
+      to: To,
+      from: From,
+    });
+
+    return resp;
+  }
+
+  /**
+   * Updates the call status information based on the provided data.
+   * If the call is not completed, a user-defined message is sent to the parent call to update the call status in the client application.
+   * The call details are fetched using the parent call SID and the call status information is updated in the call logs service.
+   *
+   * @param data - The data containing the call status information.
+   * @throws BadRequestException if there is an error updating the call status information.
+   */
+  async updateCallStatusInfo(data: UpdateTwilioCallStatusDto) {
+    try {
+      const twilioClient = await this.getClient({
+        Caller: data.Caller,
+        To: data.To,
+      });
+
+      // If the call is not completed, send a user-defined message to the parent call. This is used to update the call status in the client application.
+      // Note: The user-defined message is only sent for ongoing calls.
+      if (data.CallStatus !== 'completed') {
+        await twilioClient
+          .calls(data.ParentCallSid)
+          .userDefinedMessages.create({
+            content: JSON.stringify(data),
+          });
+      }
+
+      // Get the call details using the parent call SID and update the call status information.
+      const callDetails = await twilioClient.calls(data.ParentCallSid).fetch();
+
+      await this.callLogsService.update({
+        match: { call_sid: data.ParentCallSid },
+        data: {
+          status: data.CallStatus,
+          duration: data.CallDuration,
+          to: data.To,
+          from: data.From,
+          price: callDetails.price,
+          price_unit: callDetails.priceUnit,
+          start_time: callDetails.startTime?.toISOString(),
+          end_time: callDetails.startTime?.toISOString(),
+        },
+      });
+    } catch (error) {
+      this.logger.error(`updateCallStatusInfo: ${error.message}`);
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  /**
+   * Updates the recording information for a Twilio call.
+   *
+   * @param data - The data containing the call SID and the recording URL.
+   * @throws BadRequestException if there is an error updating the recording information.
+   */
+  async updateRecordingInfo(data: UpdateTwilioRecordingInfoDto) {
+    try {
+      await this.callLogsService.update({
+        match: { call_sid: data.CallSid },
+        data: { recording_url: data.RecordingUrl },
+      });
+    } catch (error) {
+      this.logger.error(`updateRecordingInfo: ${error.message}`);
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  /**
+   * Generates a Twilio VoiceResponse object for dialing a phone number.
+   *
+   * @param fromNumber - The phone number to use as the caller ID.
+   * @param toNumber - The phone number to dial.
+   * @param twilioSetting - The Twilio settings for the call.
+   * @returns A Twilio VoiceResponse object.
+   */
+  generateDialResponse({
     fromNumber,
     toNumber,
     twilioSetting,
@@ -175,8 +280,9 @@ export class TwilioService {
       record: twilioSetting.record_calls
         ? 'record-from-answer-dual'
         : 'do-not-record',
-      recordingStatusCallback: this.getRecordingStatusCallbackUrl(),
       recordingStatusCallbackEvent: ['completed'],
+      recordingStatusCallback: this.getRecordingStatusCallbackUrl(),
+      recordingStatusCallbackMethod: 'POST',
     });
 
     dial.number(
@@ -188,16 +294,23 @@ export class TwilioService {
       toNumber,
     );
 
-    return response.toString();
+    return response;
   }
 
-  generateTwilioClientResponse({
+  /**
+   * Generates a Twilio client response for a given identity and Twilio setting.
+   *
+   * @param identity - The identity of the client.
+   * @param twilioSetting - The Twilio setting object.
+   * @returns The Twilio VoiceResponse object.
+   */
+  generateClientResponse({
     identity,
     twilioSetting,
   }: {
     identity: string;
     twilioSetting: TwilioSetting;
-  }): string {
+  }) {
     const response = new twilio.twiml.VoiceResponse();
     const dial = response.dial({
       ringTone: 'at',
@@ -217,149 +330,67 @@ export class TwilioService {
       identity,
     );
 
-    return response.toString();
+    return response;
   }
 
-  async getTwilioDataFromIdentity(identity: string) {
-    if (identity.startsWith('client:')) {
-      const { data: user, error: userError } = await this.supabase
-        .from('Users')
-        .select(
-          'id, twilioSetting: Twilio_Settings(*), twilioAgent: Twilio_Agents(*)',
-        )
-        .eq('id', identity.replace('client:', ''))
-        .single();
-      if (userError) {
-        this.logger.error(`getTwilioDataFromIdentity: ${userError.message}`);
-        throw new BadRequestException(userError.message);
-      }
-
-      return user;
-    } else {
-      const { data: user, error: userError } = await this.supabase
-        .from('Users')
-        .select(
-          'id, twilioSetting: Twilio_Settings(*), twilioAgent: Twilio_Agents!inner(*)',
-        )
-        .eq('twilioAgent.twilio_number', identity)
-        .single();
-      if (userError) {
-        this.logger.error(`getTwilioDataFromIdentity: ${userError.message}`);
-        throw new BadRequestException(userError.message);
-      }
-
-      return user;
+  /**
+   * Retrieves Twilio data based on the provided Caller and To parameters.
+   *
+   * @param {Object} options - The options object containing Caller and To properties.
+   * @param {string} options.Caller - The caller identifier.
+   * @param {string} options.To - The recipient identifier.
+   * @returns {Promise<any>} - A promise that resolves to the Twilio data.
+   */
+  async getTwilioData({ Caller, To }: { Caller: string; To: string }) {
+    // Case 1: Outgoing call initiated by the client
+    if (Caller.startsWith('client:')) {
+      // When a client makes an outgoing call, Caller contains 'client:USER_ID'
+      // and To contains the called number. We need to extract the USER_ID
+      // from Caller by removing the 'client:' prefix.
+      // Note: USER_ID is used as the identity when generating the voice access token.
+      return this.usersService.getTwilioDataFromUserId(
+        Caller.replace('client:', ''),
+      );
+    }
+    // Case 2: Incoming call to the client
+    else if (To.startsWith('client:')) {
+      // When updating recording info for an incoming call, To contains 'client:USER_ID'
+      // and Caller contains the number of the caller. We need to extract the USER_ID
+      // from To by removing the 'client:' prefix.
+      return this.usersService.getTwilioDataFromUserId(
+        To.replace('client:', ''),
+      );
+    }
+    // Case 3: Outgoing call (when updating recording info)
+    else {
+      // When updating recording info for an outgoing call, Caller contains the
+      // number making the call, and To contains the called number. In this case,
+      // we need to get the Twilio data using the Caller's number.
+      return this.usersService.getTwilioDataFromTwilioNumber(Caller);
     }
   }
 
-  //
-  // INCOMING CALL
-  //
-
-  async processIncomingCall({
-    From,
-    To,
-    CallSid,
-    CallStatus,
-    Called,
-    Caller,
-  }: TwilioIncomingCallDto) {
-    const user = await this.getTwilioNumberOwners(To);
-
-    let resp: string;
-    if (user.twilioAgent.call_receiving_device === 'Phone') {
-      if (!user.phone) {
-        const response = new twilio.twiml.VoiceResponse();
-        response.say(
-          'Agent is unavailable to take the call, please call after some time.',
-        );
-        resp = response.toString();
-      } else {
-        resp = this.generateTwilioDialResponse({
-          fromNumber: From,
-          toNumber: user.phone,
-          twilioSetting: user.twilioSetting,
-        });
-      }
-    } else {
-      resp = this.generateTwilioClientResponse({
-        identity: user.id,
-        twilioSetting: user.twilioSetting,
-      });
-    }
-
-    await this.callLogsService.create({
-      call_sid: CallSid,
-      type: this.getDirection({ caller: Caller }),
-      caller: Caller,
-      receiver: Called,
-      status: CallStatus,
-      to: To,
-      from: From,
-    });
-
-    return resp;
-  }
-
-  private async getTwilioNumberOwners(phoneNumber: string) {
-    const cleanedPhoneNumber = phoneNumber.replace(/[^\d+]/g, '');
-
-    const { data: users, error: usersError } = await this.supabase
-      .from('Users')
-      .select(
-        `
-        *,
-        twilioAgent: Twilio_Agents!inner(*),
-        twilioSetting: Twilio_Settings(*)
-        `,
-      )
-      .eq('twilioAgent.twilio_number', cleanedPhoneNumber)
-      .single();
-    if (usersError) {
-      this.logger.error(`getTwilioNumberOwners: ${usersError.message}`);
-      throw new BadRequestException(usersError.message);
-    }
-
-    return users;
-  }
-
-  //
-  // UTILS
-  //
-
+  /**
+   * Determines the direction of the call based on the caller's identifier.
+   * If the caller starts with 'client:', the call is considered outgoing.
+   * Otherwise, the call is considered incoming.
+   *
+   * @param caller - The identifier of the caller.
+   * @returns The direction of the call ('outgoing' or 'incoming').
+   */
   getDirection({ caller }: { caller: string }) {
-    if (caller.toLowerCase().startsWith('client:')) {
-      return 'Outgoing';
+    if (caller.startsWith('client:')) {
+      return 'outgoing';
     } else {
-      return 'Incoming';
+      return 'incoming';
     }
   }
 
-  async validateTwilioRequest({
-    signature,
-    url,
-    body,
-    identity,
-  }: {
-    signature: string;
-    url: string;
-    body: any;
-    identity: string;
-  }) {
-    const { twilioSetting } = await this.getTwilioDataFromIdentity(identity);
-
-    const isValid = twilio.validateRequest(
-      twilioSetting.auth_token,
-      signature,
-      url,
-      body,
-    );
-    if (!isValid) {
-      this.logger.error('validateTwilioRequest: Invalid Twilio Request');
-      throw new BadRequestException('Invalid Twilio Request');
-    }
-  }
-
+  /**
+   * Returns the status callback URL for updating recording information.
+   * The URL is constructed using the BASE_URL configuration value and the '/webhooks/twilio/update-recording-info' path.
+   * @returns The status callback URL.
+   */
   getRecordingStatusCallbackUrl() {
     return (
       this.configService.get<string>('BASE_URL') +
@@ -367,20 +398,17 @@ export class TwilioService {
     );
   }
 
+  /**
+   * Returns the callback URL for updating call status information.
+   * The URL is constructed by appending '/webhooks/twilio/update-call-status-info'
+   * to the BASE_URL configuration value.
+   *
+   * @returns The callback URL for updating call status information.
+   */
   getUpdateCallStatusCallbackUrl(): string {
     return (
       this.configService.get<string>('BASE_URL') +
       '/webhooks/twilio/update-call-status-info'
     );
-  }
-
-  async getCallInfo({
-    client,
-    callSid,
-  }: {
-    client: twilio.Twilio;
-    callSid: string;
-  }) {
-    return client.calls(callSid).fetch();
   }
 }
