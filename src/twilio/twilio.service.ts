@@ -7,7 +7,6 @@ import { UpdateTwilioCallStatusDto } from './dto/update-twilio-call-status.dto';
 import { Database } from 'src/supabase/supabase.types';
 import { CallLogsService } from 'src/call-logs/call-logs.service';
 import { TwilioIncomingCallDto } from './dto/twilio-incoming-call.dto';
-import { UpdateTwilioRecordingInfoDto } from './dto/update-twilio-recording-info.dto';
 import { UsersService } from 'src/users/users.service';
 import VoiceResponse from 'twilio/lib/twiml/VoiceResponse';
 
@@ -233,30 +232,13 @@ export class TwilioService {
           receiver: data.Called,
           price: callDetails.price,
           price_unit: callDetails.priceUnit,
+          recording_url: data.RecordingUrl, // Recording URL is only available for completed calls
           start_time: callDetails.startTime?.toISOString(),
           end_time: callDetails.startTime?.toISOString(),
         },
       });
     } catch (error) {
       this.logger.error(`updateCallStatusInfo: ${error.message}`);
-      throw new BadRequestException(error.message);
-    }
-  }
-
-  /**
-   * Updates the recording information for a Twilio call.
-   *
-   * @param data - The data containing the call SID and the recording URL.
-   * @throws BadRequestException if there is an error updating the recording information.
-   */
-  async updateRecordingInfo(data: UpdateTwilioRecordingInfoDto) {
-    try {
-      await this.callLogsService.update({
-        match: { call_sid: data.CallSid },
-        data: { recording_url: data.RecordingUrl },
-      });
-    } catch (error) {
-      this.logger.error(`updateRecordingInfo: ${error.message}`);
       throw new BadRequestException(error.message);
     }
   }
@@ -284,9 +266,6 @@ export class TwilioService {
       record: twilioSetting.record_calls
         ? 'record-from-answer-dual'
         : 'do-not-record',
-      recordingStatusCallbackEvent: ['completed'],
-      recordingStatusCallback: this.getRecordingStatusCallbackUrl(),
-      recordingStatusCallbackMethod: 'POST',
     });
 
     dial.number(
@@ -321,8 +300,6 @@ export class TwilioService {
       record: twilioSetting.record_calls
         ? 'record-from-answer-dual'
         : 'do-not-record',
-      recordingStatusCallback: this.getRecordingStatusCallbackUrl(),
-      recordingStatusCallbackEvent: ['completed'],
     });
 
     dial.client(
@@ -358,16 +335,16 @@ export class TwilioService {
     }
     // Case 2: Incoming call to the client
     else if (To.startsWith('client:')) {
-      // When updating recording info for an incoming call, To contains 'client:USER_ID'
+      // When updating call status info for an incoming call, To contains 'client:USER_ID'
       // and Caller contains the number of the caller. We need to extract the USER_ID
       // from To by removing the 'client:' prefix.
       return this.usersService.getTwilioDataFromUserId(
         To.replace('client:', ''),
       );
     }
-    // Case 3: Outgoing call (when updating recording info)
+    // Case 3: Outgoing call (when updating call status info)
     else {
-      // When updating recording info for an outgoing call, Caller contains the
+      // When updating call status info for an outgoing call, Caller contains the
       // number making the call, and To contains the called number. In this case,
       // we need to get the Twilio data using the Caller's number.
       return this.usersService.getTwilioDataFromTwilioNumber(Caller);
@@ -388,18 +365,6 @@ export class TwilioService {
     } else {
       return 'incoming';
     }
-  }
-
-  /**
-   * Returns the status callback URL for updating recording information.
-   * The URL is constructed using the BASE_URL configuration value and the '/webhooks/twilio/update-recording-info' path.
-   * @returns The status callback URL.
-   */
-  getRecordingStatusCallbackUrl() {
-    return (
-      this.configService.get<string>('BASE_URL') +
-      '/webhooks/twilio/update-recording-info'
-    );
   }
 
   /**

@@ -12,7 +12,6 @@ import { TwilioVoiceWebhookDto } from 'src/twilio/dto/twilio-voice-webhook.dto';
 import { ConfigService } from '@nestjs/config';
 import { TwilioIncomingCallDto } from 'src/twilio/dto/twilio-incoming-call.dto';
 import { UpdateTwilioCallStatusDto } from 'src/twilio/dto/update-twilio-call-status.dto';
-import { UpdateTwilioRecordingInfoDto } from 'src/twilio/dto/update-twilio-recording-info.dto';
 import * as twilio from 'twilio';
 
 @Controller('webhooks')
@@ -127,26 +126,5 @@ export class WebhooksController {
     });
 
     return this.twilioService.updateCallStatusInfo(body);
-  }
-
-  @Post('/twilio/update-recording-info')
-  async updateTwilioRecording(
-    @Req() req: Request,
-    @Body() body: UpdateTwilioRecordingInfoDto,
-  ) {
-    this.logger.verbose(
-      `/webhooks/twilio/update-recording-info: ${JSON.stringify(body)}`,
-    );
-
-    // Validate the Twilio request by checking the URL, signature, identity, and body
-    // Make sure not to remove any fields from the body if they are not in the validation object
-    // await this.validateTwilioRequest({
-    //   url: this.configService.get('BASE_URL') + req.url,
-    //   signature: req.headers['x-twilio-signature'],
-    //   identity: body.Caller,
-    //   body: body,
-    // });
-
-    return this.twilioService.updateRecordingInfo(body);
   }
 }
