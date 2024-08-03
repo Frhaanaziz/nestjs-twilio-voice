@@ -90,7 +90,7 @@ export class TwilioService {
    * Handles the Twilio voice webhook.
    *
    * @param {TwilioVoiceWebhookDto} options - The Twilio voice webhook data.
-   * @returns {Promise<any>} - The response generated for the webhook.
+   * @returns {Promise<VoiceResponse>} - The response generated for the webhook.
    * @throws {BadRequestException} - If the Twilio Agent is not found, Twilio Number is not set, or Twilio Setting is not found.
    */
   async handleVoiceWebhook({
@@ -99,6 +99,7 @@ export class TwilioService {
     CallSid,
     CallStatus,
     From,
+    Called,
   }: TwilioVoiceWebhookDto) {
     const { twilioAgent, twilioSetting } = await this.getTwilioData({
       Caller,
@@ -127,8 +128,9 @@ export class TwilioService {
     await this.callLogsService.create({
       call_sid: CallSid,
       type: this.getDirection({ caller: Caller }),
-      caller: Caller,
       status: CallStatus,
+      caller: Caller,
+      receiver: Called,
       to: To,
       from: From,
     });
@@ -140,7 +142,7 @@ export class TwilioService {
    * Processes an incoming call and determines the appropriate response based on the user's settings.
    *
    * @param {TwilioIncomingCallDto} incomingCall - The incoming call details.
-   * @returns {Promise<string>} - The TwiML response to be sent back to Twilio.
+   * @returns {Promise<VoiceResponse>} - The TwiML response to be sent back to Twilio.
    */
   async processIncomingCallWebhook({
     From,
@@ -227,6 +229,8 @@ export class TwilioService {
           duration: data.CallDuration,
           to: data.To,
           from: data.From,
+          caller: data.Caller,
+          receiver: data.Called,
           price: callDetails.price,
           price_unit: callDetails.priceUnit,
           start_time: callDetails.startTime?.toISOString(),
