@@ -3,30 +3,34 @@ import { IsOptional, IsString } from 'class-validator';
 export class TwilioVoiceWebhookDto {
   @IsString()
   @IsOptional()
-  AccountSid: string;
+  AccountSid?: string;
 
   @IsString()
   @IsOptional()
-  ApplicationSid: string;
+  ApplicationSid?: string;
 
   @IsString()
   @IsOptional()
-  CallSid: string;
+  CallSid?: string;
 
   @IsString()
   @IsOptional()
-  CallStatus: string;
+  CallStatus?: string;
+
+  @IsString()
+  @IsOptional()
+  Called?: string;
 
   @IsString()
   Caller: string;
 
   @IsString()
   @IsOptional()
-  Direction: string;
+  Direction?: string;
 
   @IsString()
   @IsOptional()
-  From: string;
+  From?: string;
 
   @IsString()
   To: string;
