@@ -6,6 +6,7 @@ import {
   Logger,
   Req,
   BadRequestException,
+  Param,
 } from '@nestjs/common';
 import { TwilioService } from 'src/twilio/twilio.service';
 import { TwilioVoiceWebhookDto } from 'src/twilio/dto/twilio-voice-webhook.dto';
@@ -65,8 +66,14 @@ export class WebhooksController {
   async twilioVoiceHandler(
     @Req() req: Request,
     @Body() body: TwilioVoiceWebhookDto,
+    @Param() params: any,
   ) {
-    this.logger.verbose(`/webhooks/twilio/voice: ${JSON.stringify(body)}`);
+    this.logger.verbose(
+      `/webhooks/twilio/voice (params): ${JSON.stringify(params)}`,
+    );
+    this.logger.verbose(
+      `/webhooks/twilio/voice (body): ${JSON.stringify(body)}`,
+    );
 
     // Validate the Twilio request by checking the URL, signature, identity, and body
     // Make sure not to remove any fields from the body if they are not in the validation object
@@ -88,9 +95,13 @@ export class WebhooksController {
   async twilioIncomingCallHandler(
     @Req() req: Request,
     @Body() body: TwilioIncomingCallDto,
+    @Param() params: any,
   ) {
     this.logger.verbose(
-      `/webhooks/twilio/incoming-call: ${JSON.stringify(body)}`,
+      `/webhooks/twilio/incoming-call (params): ${JSON.stringify(params)}`,
+    );
+    this.logger.verbose(
+      `/webhooks/twilio/incoming-call (body): ${JSON.stringify(body)}`,
     );
 
     await this.validateTwilioRequest({
@@ -110,9 +121,13 @@ export class WebhooksController {
   async updateTwilioCallStatus(
     @Req() req: Request,
     @Body() body: UpdateTwilioCallStatusDto,
+    @Param() params: any,
   ) {
     this.logger.verbose(
-      `/webhooks/twilio/update-call-status-info: ${JSON.stringify(body)}`,
+      `/webhooks/twilio/update-call-status-info (params): ${JSON.stringify(params)}`,
+    );
+    this.logger.verbose(
+      `/webhooks/twilio/update-call-status-info (body): ${JSON.stringify(body)}`,
     );
 
     // Validate the Twilio request by checking the URL, signature, identity, and body
