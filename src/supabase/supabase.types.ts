@@ -11,6 +11,7 @@ export type Database = {
     Tables: {
       Activities: {
         Row: {
+          call_sid: string | null
           created_at: string
           description: string | null
           id: number
@@ -23,6 +24,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          call_sid?: string | null
           created_at?: string
           description?: string | null
           id?: number
@@ -35,6 +37,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          call_sid?: string | null
           created_at?: string
           description?: string | null
           id?: number
@@ -80,24 +83,27 @@ export type Database = {
       Activity_Participants: {
         Row: {
           activity_id: number
+          contact_id: number | null
           created_at: string
           id: number
           role: Database["public"]["Enums"]["activity_roles"]
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           activity_id: number
+          contact_id?: number | null
           created_at?: string
           id?: number
           role: Database["public"]["Enums"]["activity_roles"]
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           activity_id?: number
+          contact_id?: number | null
           created_at?: string
           id?: number
           role?: Database["public"]["Enums"]["activity_roles"]
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -105,6 +111,13 @@ export type Database = {
             columns: ["activity_id"]
             isOneToOne: false
             referencedRelation: "Activities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "Activity_Participants_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "Contacts"
             referencedColumns: ["id"]
           },
           {
@@ -843,7 +856,7 @@ export type Database = {
           close_reason: Database["public"]["Enums"]["close_reasons"] | null
           confidence: number | null
           contact_id: number | null
-          created_at: string | null
+          created_at: string
           currency_id: number | null
           current_situation: string | null
           customer_need: string | null
@@ -853,13 +866,14 @@ export type Database = {
           id: number
           index_number: number
           lead_id: number
+          notes: string | null
           opportunity_status_id: number
           organization_id: number
           payment_plan: Database["public"]["Enums"]["payment_plans"] | null
           priority: Database["public"]["Enums"]["priority_statuses"]
           proposed_solution: string | null
           rating_id: number
-          updated_at: string | null
+          updated_at: string
           user_id: string
         }
         Insert: {
@@ -869,7 +883,7 @@ export type Database = {
           close_reason?: Database["public"]["Enums"]["close_reasons"] | null
           confidence?: number | null
           contact_id?: number | null
-          created_at?: string | null
+          created_at?: string
           currency_id?: number | null
           current_situation?: string | null
           customer_need?: string | null
@@ -879,13 +893,14 @@ export type Database = {
           id?: number
           index_number: number
           lead_id: number
+          notes?: string | null
           opportunity_status_id: number
           organization_id: number
           payment_plan?: Database["public"]["Enums"]["payment_plans"] | null
           priority?: Database["public"]["Enums"]["priority_statuses"]
           proposed_solution?: string | null
           rating_id: number
-          updated_at?: string | null
+          updated_at?: string
           user_id: string
         }
         Update: {
@@ -895,7 +910,7 @@ export type Database = {
           close_reason?: Database["public"]["Enums"]["close_reasons"] | null
           confidence?: number | null
           contact_id?: number | null
-          created_at?: string | null
+          created_at?: string
           currency_id?: number | null
           current_situation?: string | null
           customer_need?: string | null
@@ -905,13 +920,14 @@ export type Database = {
           id?: number
           index_number?: number
           lead_id?: number
+          notes?: string | null
           opportunity_status_id?: number
           organization_id?: number
           payment_plan?: Database["public"]["Enums"]["payment_plans"] | null
           priority?: Database["public"]["Enums"]["priority_statuses"]
           proposed_solution?: string | null
           rating_id?: number
-          updated_at?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: [
@@ -1484,7 +1500,7 @@ export type Database = {
       }
     }
     Enums: {
-      activity_roles: "author" | "assignee"
+      activity_roles: "author" | "assignee" | "called"
       activity_types:
         | "closed as won"
         | "closed as lost"
@@ -1492,7 +1508,9 @@ export type Database = {
         | "qualified"
         | "disqualified"
         | "note"
-        | "calling"
+        | "called"
+        | "missed call"
+        | "attempted to call"
         | "email"
         | "assigned"
         | "lead created"
