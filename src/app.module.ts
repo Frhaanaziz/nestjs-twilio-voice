@@ -6,6 +6,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { TwilioModule } from './twilio/twilio.module';
 import { CallLogsModule } from './call-logs/call-logs.module';
 import { UsersModule } from './users/users.module';
+import { ActivitiesModule } from './activities/activities.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { UsersModule } from './users/users.module';
     TwilioModule,
     CallLogsModule,
     UsersModule,
+    ActivitiesModule,
   ],
   controllers: [],
   providers: [],

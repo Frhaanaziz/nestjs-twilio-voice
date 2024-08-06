@@ -14,6 +14,7 @@ import { CallLogsService } from 'src/call-logs/call-logs.service';
 import { TwilioIncomingCallDto } from './dto/twilio-incoming-call.dto';
 import { UsersService } from 'src/users/users.service';
 import VoiceResponse from 'twilio/lib/twiml/VoiceResponse';
+import { ActivitiesService } from 'src/activities/activities.service';
 
 @Injectable()
 export class TwilioService {
@@ -23,6 +24,7 @@ export class TwilioService {
     private readonly configService: ConfigService,
     private readonly callLogsService: CallLogsService,
     private readonly usersService: UsersService,
+    private readonly activitiesService: ActivitiesService,
   ) {}
 
   async getClient({ Caller, To }: { Caller: string; To: string }) {
@@ -97,18 +99,10 @@ export class TwilioService {
    * @returns {Promise<VoiceResponse>} - The response generated for the webhook.
    * @throws {BadRequestException} - If the Twilio Agent is not found, Twilio Number is not set, or Twilio Setting is not found.
    */
-  async handleVoiceWebhook({
-    Caller,
-    To,
-    CallSid,
-    CallStatus,
-    From,
-    Called,
-    contact_id,
-  }: TwilioVoiceWebhookDto) {
+  async handleVoiceWebhook(data: TwilioVoiceWebhookDto) {
     const { twilioAgent, twilioSetting } = await this.getTwilioData({
-      Caller,
-      To,
+      Caller: data.Caller,
+      To: data.To,
     });
 
     if (!twilioAgent) {
@@ -126,20 +120,38 @@ export class TwilioService {
 
     const resp = this.generateDialResponse({
       fromNumber: twilioAgent.twilio_number,
-      toNumber: To,
+      toNumber: data.To,
       twilioSetting,
     });
 
-    await this.callLogsService.create({
-      call_sid: CallSid,
-      type: this.getDirection({ caller: Caller }),
-      status: CallStatus,
-      caller: Caller,
-      receiver: Called,
-      to: To,
-      from: From,
-      contact_id: parseInt(contact_id),
-    });
+    await Promise.all([
+      this.callLogsService.create({
+        call_sid: data.CallSid,
+        type: this.getDirection({ caller: data.Caller }),
+        status: data.CallStatus,
+        caller: data.Caller,
+        receiver: data.Called,
+        to: data.To,
+        from: data.From,
+        contact_id: parseInt(data.contact_id),
+      }),
+      this.activitiesService.createWithParticipant({
+        activity: {
+          call_sid: data.CallSid,
+          type: 'attempted to call',
+          lead_id: data.lead_id ? parseInt(data.lead_id) : null,
+          opportunity_id: data.opportunity_id
+            ? parseInt(data.opportunity_id)
+            : null,
+          organization_id: parseInt(data.organization_id),
+          user_id: data.user_id,
+          subject: `Attempted to call {{called}}`,
+        },
+        participants: [
+          { role: 'called', contact_id: parseInt(data.contact_id) },
+        ],
+      }),
+    ]);
 
     return resp;
   }
@@ -244,6 +256,16 @@ export class TwilioService {
           end_time: callDetails.startTime?.toISOString(),
         },
       });
+
+      if (data.CallStatus === 'completed') {
+        await this.activitiesService.update({
+          match: { call_sid: data.ParentCallSid },
+          data: {
+            type: 'called',
+            subject: `Called {{called}}`,
+          },
+        });
+      }
     } catch (error) {
       this.logger.error(`updateCallStatusInfo: ${error.message}`);
       throw new BadRequestException(error.message);
