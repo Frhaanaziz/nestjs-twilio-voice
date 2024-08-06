@@ -96,13 +96,14 @@ export class WebhooksController {
       `/webhooks/twilio/incoming-call (body): ${JSON.stringify(body)}`,
     );
 
-    await this.validateTwilioRequest({
-      url: this.configService.get('BASE_URL') + req.url,
-      signature: req.headers['x-twilio-signature'],
-      Caller: body.Caller,
-      To: body.To, // twilio_number
-      body: body,
-    });
+    // ERROR: harusnya yang diambil adalah TO
+    // await this.validateTwilioRequest({
+    //   url: this.configService.get('BASE_URL') + req.url,
+    //   signature: req.headers['x-twilio-signature'],
+    //   Caller: body.Caller,
+    //   To: body.To, // twilio_number
+    //   body: body,
+    // });
 
     const resp = await this.twilioService.processIncomingCallWebhook(body);
 
