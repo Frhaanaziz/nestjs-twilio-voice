@@ -1,35 +1,35 @@
 import { IsNumberString, IsOptional, IsString } from 'class-validator';
 
 export class TwilioVoiceWebhookDto {
-  @IsString()
   @IsOptional()
+  @IsString()
   AccountSid?: string;
 
-  @IsString()
   @IsOptional()
+  @IsString()
   ApplicationSid?: string;
 
-  @IsString()
   @IsOptional()
+  @IsString()
   CallSid?: string;
 
-  @IsString()
   @IsOptional()
+  @IsString()
   CallStatus?: string;
 
-  @IsString()
   @IsOptional()
+  @IsString()
   Called?: string;
 
   @IsString()
   Caller: string;
 
-  @IsString()
   @IsOptional()
+  @IsString()
   Direction?: string;
 
-  @IsString()
   @IsOptional()
+  @IsString()
   From?: string;
 
   @IsString()
@@ -37,4 +37,18 @@ export class TwilioVoiceWebhookDto {
 
   @IsString()
   contact_id: string;
+
+  @IsString()
+  user_id: string;
+
+  @IsString()
+  organization_id: string;
+
+  @IsOptional()
+  @IsString()
+  lead_id?: string;
+
+  @IsOptional()
+  @IsString()
+  opportunity_id?: string;
 }
