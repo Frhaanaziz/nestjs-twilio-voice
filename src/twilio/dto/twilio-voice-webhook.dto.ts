@@ -1,4 +1,4 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsNumberString, IsOptional, IsString } from 'class-validator';
 
 export class TwilioVoiceWebhookDto {
   @IsString()
@@ -34,4 +34,7 @@ export class TwilioVoiceWebhookDto {
 
   @IsString()
   To: string;
+
+  @IsString()
+  contact_id: string;
 }

@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as twilio from 'twilio';
 import { TwilioVoiceWebhookDto } from './dto/twilio-voice-webhook.dto';
@@ -99,6 +104,7 @@ export class TwilioService {
     CallStatus,
     From,
     Called,
+    contact_id,
   }: TwilioVoiceWebhookDto) {
     const { twilioAgent, twilioSetting } = await this.getTwilioData({
       Caller,
@@ -132,6 +138,7 @@ export class TwilioService {
       receiver: Called,
       to: To,
       from: From,
+      contact_id: parseInt(contact_id),
     });
 
     return resp;
@@ -210,7 +217,7 @@ export class TwilioService {
 
       // If the call is not completed, send a user-defined message to the parent call. This is used to update the call status in the client application.
       // Note: The user-defined message is only sent for ongoing calls.
-      if (data.CallStatus !== 'completed') {
+      if (data.CallStatus === 'in-progress' || data.CallStatus === 'ringing') {
         await twilioClient
           .calls(data.ParentCallSid)
           .userDefinedMessages.create({

@@ -66,11 +66,7 @@ export class WebhooksController {
   async twilioVoiceHandler(
     @Req() req: Request,
     @Body() body: TwilioVoiceWebhookDto,
-    @Param() params: any,
   ) {
-    this.logger.verbose(
-      `/webhooks/twilio/voice (params): ${JSON.stringify(params)}`,
-    );
     this.logger.verbose(
       `/webhooks/twilio/voice (body): ${JSON.stringify(body)}`,
     );
@@ -95,11 +91,7 @@ export class WebhooksController {
   async twilioIncomingCallHandler(
     @Req() req: Request,
     @Body() body: TwilioIncomingCallDto,
-    @Param() params: any,
   ) {
-    this.logger.verbose(
-      `/webhooks/twilio/incoming-call (params): ${JSON.stringify(params)}`,
-    );
     this.logger.verbose(
       `/webhooks/twilio/incoming-call (body): ${JSON.stringify(body)}`,
     );
@@ -121,11 +113,7 @@ export class WebhooksController {
   async updateTwilioCallStatus(
     @Req() req: Request,
     @Body() body: UpdateTwilioCallStatusDto,
-    @Param() params: any,
   ) {
-    this.logger.verbose(
-      `/webhooks/twilio/update-call-status-info (params): ${JSON.stringify(params)}`,
-    );
     this.logger.verbose(
       `/webhooks/twilio/update-call-status-info (body): ${JSON.stringify(body)}`,
     );
