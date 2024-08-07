@@ -61,46 +61,37 @@ export class WebhooksController {
   }
 
   @Post('/twilio/incoming-call')
-  async twilioIncomingCallHandler(@Body() body: any) {
+  @Header('Content-Type', 'text/xml')
+  async twilioIncomingCallHandler(
+    @Req() req: Request,
+    @Body() body: TwilioIncomingCallDto,
+  ) {
+    this.logger.verbose(
+      `/webhooks/twilio/incoming-call (body): ${JSON.stringify(body)}`,
+    );
+
     const user = await this.usersService.getTwilioDataFromTwilioNumber(body.To);
+
+    // Validate the Twilio request by checking the URL, signature, identity, and body
+    // Make sure not to remove any fields from the body if they are not in the validation object
+    const isValid = twilio.validateRequest(
+      user.twilioSetting.auth_token,
+      req.headers['x-twilio-signature'],
+      this.configService.get('BASE_URL') + req.url,
+      body,
+    );
+    if (!isValid) {
+      this.logger.error('/twilio/incoming-call: Invalid Twilio Request');
+      throw new BadRequestException('Invalid Twilio Request');
+    }
 
     const resp = await this.twilioService.processIncomingCallWebhook({
       data: body,
       user,
     });
+
+    return resp.toString();
   }
-  // @Post('/twilio/incoming-call')
-  // @Header('Content-Type', 'text/xml')
-  // async twilioIncomingCallHandler(
-  //   @Req() req: Request,
-  //   @Body() body: TwilioIncomingCallDto,
-  // ) {
-  //   this.logger.verbose(
-  //     `/webhooks/twilio/incoming-call (body): ${JSON.stringify(body)}`,
-  //   );
-
-  //   const user = await this.usersService.getTwilioDataFromTwilioNumber(body.To);
-
-  //   // Validate the Twilio request by checking the URL, signature, identity, and body
-  //   // Make sure not to remove any fields from the body if they are not in the validation object
-  //   const isValid = twilio.validateRequest(
-  //     user.twilioSetting.auth_token,
-  //     req.headers['x-twilio-signature'],
-  //     this.configService.get('BASE_URL') + req.url,
-  //     body,
-  //   );
-  //   if (!isValid) {
-  //     this.logger.error('/twilio/incoming-call: Invalid Twilio Request');
-  //     throw new BadRequestException('Invalid Twilio Request');
-  //   }
-
-  //   const resp = await this.twilioService.processIncomingCallWebhook({
-  //     data: body,
-  //     user,
-  //   });
-
-  //   return resp.toString();
-  // }
 
   @Post('/twilio/update-incoming-call-status')
   async updateIncomingCallStatus(

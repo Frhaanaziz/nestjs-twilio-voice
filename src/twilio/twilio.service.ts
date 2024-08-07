@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   ParseIntPipe,
 } from '@nestjs/common';
@@ -97,13 +98,6 @@ export class TwilioService {
     return token.toJwt();
   }
 
-  /**
-   * Handles the Twilio voice webhook.
-   *
-   * @param {TwilioVoiceWebhookDto} options - The Twilio voice webhook data.
-   * @returns {Promise<VoiceResponse>} - The response generated for the webhook.
-   * @throws {BadRequestException} - If the Twilio Agent is not found, Twilio Number is not set, or Twilio Setting is not found.
-   */
   async handleVoiceWebhook({
     data,
     twilioAgent,
@@ -169,17 +163,21 @@ export class TwilioService {
   }) {
     let resp: VoiceResponse;
 
-    const { data: contact } = await this.supabase
+    const { data: contact, error: contactError } = await this.supabase
       .from('Contacts')
       .select('id, company: Companies(id)')
       // add user_id to the match?
       .match({ mobile_phone: data.From, organization_id: user.organization_id })
       .limit(1)
       .single();
+    if (contactError && contactError.code !== 'PGRST116') {
+      this.logger.error(`processIncomingCallWebhook: ${contactError.message}`);
+      throw new InternalServerErrorException(contactError.message);
+    }
 
     let lead: { id: number } | null = null;
     if (contact) {
-      const { data } = await this.supabase
+      const { data, error: leadError } = await this.supabase
         .from('Leads')
         .select('id')
         // add user_id to the match?
@@ -189,6 +187,10 @@ export class TwilioService {
         })
         .limit(1)
         .single();
+      if (leadError && leadError.code !== 'PGRST116') {
+        this.logger.error(`processIncomingCallWebhook: ${leadError.message}`);
+        throw new InternalServerErrorException(leadError.message);
+      }
       lead = data;
     }
 
@@ -284,7 +286,10 @@ export class TwilioService {
         },
       });
 
-      if (data.CallStatus === 'completed') {
+      if (
+        data.CallStatus === 'in-progress' ||
+        data.CallStatus === 'completed'
+      ) {
         await this.activitiesService.update({
           match: { call_sid: data.ParentCallSid },
           data: {
