@@ -821,7 +821,7 @@ export type Database = {
           {
             foreignKeyName: "Leads_company_id_fkey"
             columns: ["company_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "Companies"
             referencedColumns: ["id"]
           },
@@ -1500,7 +1500,7 @@ export type Database = {
       }
     }
     Enums: {
-      activity_roles: "author" | "assignee" | "called"
+      activity_roles: "author" | "assignee" | "called" | "caller"
       activity_types:
         | "closed as won"
         | "closed as lost"
@@ -1515,6 +1515,8 @@ export type Database = {
         | "assigned"
         | "lead created"
         | "opportunity created"
+        | "updated"
+        | "incoming call"
       close_reasons:
         | "pricing"
         | "competition"

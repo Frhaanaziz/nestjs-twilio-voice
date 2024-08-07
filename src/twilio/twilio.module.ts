@@ -5,11 +5,12 @@ import { TwilioController } from './twilio.controller';
 import { CallLogsModule } from 'src/call-logs/call-logs.module';
 import { UsersModule } from 'src/users/users.module';
 import { ActivitiesModule } from 'src/activities/activities.module';
+import { SupabaseService } from 'src/supabase/supabase.service';
 
 @Module({
   imports: [CallLogsModule, UsersModule, ActivitiesModule],
   controllers: [TwilioController],
-  providers: [TwilioService, ConfigService],
+  providers: [TwilioService, ConfigService, SupabaseService],
   exports: [TwilioService],
 })
 export class TwilioModule {}
