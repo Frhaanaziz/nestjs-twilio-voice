@@ -138,9 +138,11 @@ export type Database = {
           created_at: string
           description: string | null
           email: string | null
+          facebook: string | null
           founded: string | null
           id: number
           industry_id: number | null
+          instagram: string | null
           linkedin: string | null
           location: string | null
           metadata: Json | null
@@ -150,6 +152,7 @@ export type Database = {
           size_id: number | null
           specialities: string | null
           tagline: string | null
+          twitter: string | null
           updated_at: string
           website: string | null
           zip_code: string | null
@@ -162,9 +165,11 @@ export type Database = {
           created_at?: string
           description?: string | null
           email?: string | null
+          facebook?: string | null
           founded?: string | null
           id?: number
           industry_id?: number | null
+          instagram?: string | null
           linkedin?: string | null
           location?: string | null
           metadata?: Json | null
@@ -174,6 +179,7 @@ export type Database = {
           size_id?: number | null
           specialities?: string | null
           tagline?: string | null
+          twitter?: string | null
           updated_at?: string
           website?: string | null
           zip_code?: string | null
@@ -186,9 +192,11 @@ export type Database = {
           created_at?: string
           description?: string | null
           email?: string | null
+          facebook?: string | null
           founded?: string | null
           id?: number
           industry_id?: number | null
+          instagram?: string | null
           linkedin?: string | null
           location?: string | null
           metadata?: Json | null
@@ -198,6 +206,7 @@ export type Database = {
           size_id?: number | null
           specialities?: string | null
           tagline?: string | null
+          twitter?: string | null
           updated_at?: string
           website?: string | null
           zip_code?: string | null
@@ -242,6 +251,7 @@ export type Database = {
       }
       B2B_Contacts: {
         Row: {
+          address: string | null
           city_id: number | null
           company_id: number
           country_id: number | null
@@ -259,14 +269,12 @@ export type Database = {
           mobile_phone: string | null
           postal_code: string | null
           province_id: number | null
-          street_1: string | null
-          street_2: string | null
-          street_3: string | null
           updated_at: string
           website: string | null
           whatsapp: string | null
         }
         Insert: {
+          address?: string | null
           city_id?: number | null
           company_id: number
           country_id?: number | null
@@ -284,14 +292,12 @@ export type Database = {
           mobile_phone?: string | null
           postal_code?: string | null
           province_id?: number | null
-          street_1?: string | null
-          street_2?: string | null
-          street_3?: string | null
           updated_at?: string
           website?: string | null
           whatsapp?: string | null
         }
         Update: {
+          address?: string | null
           city_id?: number | null
           company_id?: number
           country_id?: number | null
@@ -309,9 +315,6 @@ export type Database = {
           mobile_phone?: string | null
           postal_code?: string | null
           province_id?: number | null
-          street_1?: string | null
-          street_2?: string | null
-          street_3?: string | null
           updated_at?: string
           website?: string | null
           whatsapp?: string | null
@@ -463,14 +466,17 @@ export type Database = {
           city_id: number | null
           country_id: number | null
           created_at: string
+          facebook: string | null
           id: number
           industry_id: number | null
+          instagram: string | null
           linkedin: string | null
           name: string
           organization_id: number
           postal_code: string | null
           province_id: number | null
           size_id: number | null
+          twitter: string | null
           updated_at: string
           website: string | null
         }
@@ -479,14 +485,17 @@ export type Database = {
           city_id?: number | null
           country_id?: number | null
           created_at?: string
+          facebook?: string | null
           id?: number
           industry_id?: number | null
+          instagram?: string | null
           linkedin?: string | null
           name: string
           organization_id: number
           postal_code?: string | null
           province_id?: number | null
           size_id?: number | null
+          twitter?: string | null
           updated_at?: string
           website?: string | null
         }
@@ -495,14 +504,17 @@ export type Database = {
           city_id?: number | null
           country_id?: number | null
           created_at?: string
+          facebook?: string | null
           id?: number
           industry_id?: number | null
+          instagram?: string | null
           linkedin?: string | null
           name?: string
           organization_id?: number
           postal_code?: string | null
           province_id?: number | null
           size_id?: number | null
+          twitter?: string | null
           updated_at?: string
           website?: string | null
         }
@@ -547,6 +559,41 @@ export type Database = {
             columns: ["size_id"]
             isOneToOne: false
             referencedRelation: "Sizes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      Company_Overviews: {
+        Row: {
+          company_id: number
+          created_at: string
+          description: string
+          id: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: number
+          created_at?: string
+          description: string
+          id?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: number
+          created_at?: string
+          description?: string
+          id?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "Company_Overviews_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "Companies"
             referencedColumns: ["id"]
           },
         ]
@@ -703,6 +750,83 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      Inboxes: {
+        Row: {
+          call_log_id: number | null
+          created_at: string
+          description: string | null
+          email_id: string | null
+          id: number
+          is_read: boolean
+          organization_id: number
+          subject: string
+          task_id: number | null
+          title: string
+          type: Database["public"]["Enums"]["inbox_type"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          call_log_id?: number | null
+          created_at?: string
+          description?: string | null
+          email_id?: string | null
+          id?: number
+          is_read?: boolean
+          organization_id: number
+          subject: string
+          task_id?: number | null
+          title: string
+          type: Database["public"]["Enums"]["inbox_type"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          call_log_id?: number | null
+          created_at?: string
+          description?: string | null
+          email_id?: string | null
+          id?: number
+          is_read?: boolean
+          organization_id?: number
+          subject?: string
+          task_id?: number | null
+          title?: string
+          type?: Database["public"]["Enums"]["inbox_type"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "Inboxes_call_log_id_fkey"
+            columns: ["call_log_id"]
+            isOneToOne: false
+            referencedRelation: "Call_Logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "Inboxes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "Organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "Inboxes_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "Tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "Inboxes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "Users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       Industries: {
         Row: {
@@ -1532,6 +1656,7 @@ export type Database = {
         | "cannot contact"
         | "no longer interested"
         | "canceled"
+      inbox_type: "email" | "call" | "task"
       lead_statuses: "new" | "contacted" | "qualified" | "disqualified"
       method_name: "email" | "note" | "call"
       opportunity_statuses:
@@ -1550,7 +1675,8 @@ export type Database = {
         | "manual"
         | "idb2b"
         | "workfrom"
-        | "b2b database"
+        | "company database"
+        | "form"
       user_statuses: "active" | "inactive"
     }
     CompositeTypes: {

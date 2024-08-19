@@ -19,6 +19,7 @@ import { ActivitiesService } from 'src/activities/activities.service';
 import { User } from 'src/users/user.interface';
 import { SupabaseService } from 'src/supabase/supabase.service';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { InboxesService } from 'src/inboxes/inboxes.service';
 
 @Injectable()
 export class TwilioService {
@@ -31,6 +32,7 @@ export class TwilioService {
     private readonly usersService: UsersService,
     private readonly activitiesService: ActivitiesService,
     private readonly supabaseService: SupabaseService,
+    private readonly inboxesService: InboxesService,
   ) {
     this.supabase = this.supabaseService.getClient();
   }
@@ -194,6 +196,16 @@ export class TwilioService {
       lead = data;
     }
 
+    const callLog = await this.callLogsService.create({
+      call_sid: data.CallSid,
+      type: this.getDirection({ caller: data.Caller }),
+      caller: data.Caller,
+      receiver: data.Called,
+      status: data.CallStatus,
+      to: data.To,
+      from: data.From,
+    });
+
     // If the user is set to receive calls on their phone, dial the user's phone number
     if (user.twilioAgent.call_receiving_device === 'Phone') {
       // If the user's phone number is not set, inform the caller that the agent is unavailable
@@ -203,6 +215,16 @@ export class TwilioService {
           'Agent is unavailable to take the call, please call after some time.',
         );
         resp = response.toString();
+
+        await this.inboxesService.create({
+          organization_id: user.organization_id,
+          user_id: user.id,
+          subject: 'Missed call',
+          type: 'call',
+          call_log_id: callLog.id,
+          title: '',
+          description: data.From,
+        });
       } else {
         resp = this.generateDialResponse({
           fromNumber: data.From,
@@ -223,15 +245,6 @@ export class TwilioService {
       });
     }
 
-    await this.callLogsService.create({
-      call_sid: data.CallSid,
-      type: this.getDirection({ caller: data.Caller }),
-      caller: data.Caller,
-      receiver: data.Called,
-      status: data.CallStatus,
-      to: data.To,
-      from: data.From,
-    });
     if (lead) {
       await this.activitiesService.createWithParticipant({
         activity: {
@@ -240,7 +253,7 @@ export class TwilioService {
           type: 'missed call',
           subject: 'Missed call from {{caller}}',
           call_sid: data.CallSid,
-          lead_id: lead ? lead.id : null,
+          lead_id: lead.id,
         },
         participants: [{ role: 'caller', contact_id: contact.id }],
       });
@@ -306,13 +319,15 @@ export class TwilioService {
 
   async updateIncomingCallStatus({
     data,
-    twilioSetting,
+    user,
   }: {
     data: UpdateTwilioCallStatusDto;
-    twilioSetting: TwilioSetting;
+    user: User & { twilioSetting: TwilioSetting };
   }) {
     try {
-      const twilioClient = this.getClient({ twilioSetting });
+      const twilioClient = this.getClient({
+        twilioSetting: user.twilioSetting,
+      });
 
       // If the call is not completed, send a user-defined message to the parent call. This is used to update the call status in the client application.
       // Note: The user-defined message is only sent for ongoing calls.
@@ -327,7 +342,7 @@ export class TwilioService {
       // Get the call details using the parent call SID and update the call status information.
       const callDetails = await twilioClient.calls(data.ParentCallSid).fetch();
 
-      await this.callLogsService.update({
+      const callLogs = await this.callLogsService.update({
         match: { call_sid: data.ParentCallSid },
         data: {
           status: data.CallStatus,
@@ -355,6 +370,22 @@ export class TwilioService {
             subject: `Incoming call from {{caller}}`,
           },
         });
+      }
+
+      if (data.CallStatus === 'busy' || data.CallStatus === 'no-answer') {
+        await Promise.all(
+          callLogs.map((callLog) =>
+            this.inboxesService.create({
+              organization_id: user.organization_id,
+              user_id: user.id,
+              subject: 'Missed call',
+              type: 'call',
+              call_log_id: callLog.id,
+              title: '',
+              description: data.From,
+            }),
+          ),
+        );
       }
     } catch (error) {
       this.logger.error(`updateIncomingCallStatus: ${error.message}`);

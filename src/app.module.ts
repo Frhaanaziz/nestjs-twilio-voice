@@ -7,6 +7,7 @@ import { TwilioModule } from './twilio/twilio.module';
 import { CallLogsModule } from './call-logs/call-logs.module';
 import { UsersModule } from './users/users.module';
 import { ActivitiesModule } from './activities/activities.module';
+import { InboxesModule } from './inboxes/inboxes.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ActivitiesModule } from './activities/activities.module';
     CallLogsModule,
     UsersModule,
     ActivitiesModule,
+    InboxesModule,
   ],
   controllers: [],
   providers: [],

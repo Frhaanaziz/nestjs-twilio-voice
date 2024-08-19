@@ -15,13 +15,17 @@ export class CallLogsService {
   }
 
   async create(createCallLogDto: CreateCallLogDto) {
-    const { error } = await this.supabase
+    const { data, error } = await this.supabase
       .from('Call_Logs')
-      .insert(createCallLogDto);
+      .insert(createCallLogDto)
+      .select('*')
+      .single();
     if (error) {
       this.logger.error(`create: ${JSON.stringify(error)}`);
       throw new BadRequestException(error.message);
     }
+
+    return data;
   }
 
   async update({
@@ -31,13 +35,16 @@ export class CallLogsService {
     match: UpdateCallLogDto;
     data: UpdateCallLogDto;
   }) {
-    const { error } = await this.supabase
+    const { data: callLogs, error } = await this.supabase
       .from('Call_Logs')
       .update(data)
-      .match({ ...match });
+      .match({ ...match })
+      .select('*');
     if (error) {
       this.logger.error(`update:  ${JSON.stringify(error)}`);
       throw new BadRequestException(error.message);
     }
+
+    return callLogs;
   }
 }

@@ -102,14 +102,14 @@ export class WebhooksController {
       `/webhooks/twilio/update-incoming-call-status: ${JSON.stringify(body)}`,
     );
 
-    const { twilioSetting } = await this.usersService.getTwilioDataFromUserId(
+    const user = await this.usersService.getTwilioDataFromUserId(
       body.To.replace('client:', ''),
     );
 
     // Validate the Twilio request by checking the URL, signature, identity, and body
     // Make sure not to remove any fields from the body if they are not in the validation object
     const isValid = twilio.validateRequest(
-      twilioSetting.auth_token,
+      user.twilioSetting.auth_token,
       req.headers['x-twilio-signature'],
       this.configService.get('BASE_URL') + req.url,
       body,
@@ -123,7 +123,7 @@ export class WebhooksController {
 
     return this.twilioService.updateIncomingCallStatus({
       data: body,
-      twilioSetting,
+      user,
     });
   }
 
